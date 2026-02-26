@@ -15,7 +15,7 @@ Uses [`mdns-sd`](https://crates.io/crates/mdns-sd) — a pure-Rust, zero-OS-depe
 | macOS | ✅ | Universal binary (x86_64 + arm64) |
 | Windows x86_64 | ✅ | |
 | iOS arm64 | ✅ | Requires Apple multicast entitlement — see [iOS setup](#ios) |
-| Android arm64 / arm32 | ✅ | Requires MulticastLock Java plugin — see [Android setup](#android) |
+| Android arm64 / arm32 / x86_64 | ✅ | Requires MulticastLock Java plugin — see [Android setup](#android) |
 | HTML5 / Web | ❌ | Browser sandbox has no UDP multicast API |
 
 ---
@@ -167,7 +167,7 @@ Output: `addons/godot-mdns/bin/ios/arm64/<profile>/libgodot_mdns.a`
 **macOS / Linux / WSL:**
 ```bash
 cargo install cargo-ndk
-rustup target add aarch64-linux-android armv7-linux-androideabi
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 export ANDROID_NDK_HOME=/path/to/your/ndk
 
 ./build.sh --android
@@ -177,14 +177,14 @@ export ANDROID_NDK_HOME=/path/to/your/ndk
 **Windows (PowerShell):**
 ```powershell
 cargo install cargo-ndk
-rustup target add aarch64-linux-android armv7-linux-androideabi
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 $env:ANDROID_NDK_HOME = "C:\path\to\your\ndk"
 
 .\build.ps1 -Android
 .\build.ps1 -Android -Release
 ```
 
-Output: `addons/godot-mdns/bin/android/arm64/<profile>/libgodot_mdns.so` and `arm32/`
+Output: `addons/godot-mdns/bin/android/arm64/<profile>/libgodot_mdns.so`, `arm32/`, and `x86_64/`
 
 Also build the MulticastLock Java plugin (one-time, required for Android):
 ```bash
@@ -276,6 +276,7 @@ The plugin is packaged as an Android Archive (`.aar`) and declared to Godot via 
 build.sh --android  (or build.ps1 -Android)
   └─ cargo ndk -t arm64-v8a   → target/aarch64-linux-android/<profile>/libgodot_mdns.so
   └─ cargo ndk -t armeabi-v7a → target/armv7-linux-androideabi/<profile>/libgodot_mdns.so
+  └─ cargo ndk -t x86_64      → target/x86_64-linux-android/<profile>/libgodot_mdns.so
 
 android-plugin/ (one-time)
   └─ gradle assembleRelease   → MulticastLockPlugin-release.aar

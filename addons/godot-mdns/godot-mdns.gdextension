@@ -51,3 +51,5 @@ android.debug.arm64   = "res://addons/godot-mdns/bin/android/arm64/debug/libgodo
 android.release.arm64 = "res://addons/godot-mdns/bin/android/arm64/release/libgodot_mdns.so"
 android.debug.arm32   = "res://addons/godot-mdns/bin/android/arm32/debug/libgodot_mdns.so"
 android.release.arm32 = "res://addons/godot-mdns/bin/android/arm32/release/libgodot_mdns.so"
+android.debug.x86_64  = "res://addons/godot-mdns/bin/android/x86_64/debug/libgodot_mdns.so"
+android.release.x86_64 = "res://addons/godot-mdns/bin/android/x86_64/release/libgodot_mdns.so"

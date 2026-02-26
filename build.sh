@@ -7,7 +7,7 @@
 #   ./build.sh --linux           # force Linux x86_64/arm64 native build
 #   ./build.sh --ios             # iOS arm64 static lib  [macOS host + Xcode required]
 #   ./build.sh --ios --release   # iOS arm64 static lib, release
-#   ./build.sh --android         # Android arm64 + arm32 [cargo-ndk + NDK required]
+#   ./build.sh --android         # Android arm64 + arm32 + x86_64 [cargo-ndk + NDK required]
 #   ./build.sh --android --release
 #   ./build.sh --windows         # Windows x86_64 DLL (cross-compile from macOS/Linux/WSL)
 #   ./build.sh --windows --release
@@ -26,7 +26,7 @@
 #
 # Android prerequisites:
 #   cargo install cargo-ndk
-#   rustup target add aarch64-linux-android armv7-linux-androideabi
+#   rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 #   export ANDROID_NDK_HOME=/path/to/ndk
 
 set -euo pipefail
@@ -161,17 +161,16 @@ if [[ "$PLATFORM" == "android" ]]; then
     echo "ERROR: ANDROID_NDK_HOME or ANDROID_NDK_ROOT must point to the Android NDK."; exit 1
   fi
 
-  for ABI in arm64-v8a armeabi-v7a; do
+  for ABI in arm64-v8a armeabi-v7a x86_64; do
     step "Compiling Android $ABI ..."
     run_cargo ndk -t "$ABI" --platform 21 -- build "${CARGO_ARGS[@]}"
     case "$ABI" in
-      arm64-v8a)   OUT_ARCH="arm64" ;;
-      armeabi-v7a) OUT_ARCH="arm32" ;;
+      arm64-v8a)   OUT_ARCH="arm64"  ; TRIPLE="aarch64-linux-android" ;;
+      armeabi-v7a) OUT_ARCH="arm32"  ; TRIPLE="armv7-linux-androideabi" ;;
+      x86_64)      OUT_ARCH="x86_64" ; TRIPLE="x86_64-linux-android" ;;
     esac
     DST="$OUT_BASE/android/$OUT_ARCH/$PROFILE/libgodot_mdns.so"
     mkdir -p "$(dirname "$DST")"
-    TRIPLE="aarch64-linux-android"
-    [[ "$ABI" == "armeabi-v7a" ]] && TRIPLE="armv7-linux-androideabi"
     cp "$SCRIPT_DIR/target/$TRIPLE/$PROFILE/libgodot_mdns.so" "$DST"
     step "Done: $DST"
   done

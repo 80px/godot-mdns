@@ -145,7 +145,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -164,6 +164,9 @@ jobs:
 
       - name: Build arm32 (debug)
         run: cargo ndk -t armeabi-v7a --platform 21 -- build
+
+      - name: Build x86_64 (debug)
+        run: cargo ndk -t x86_64 --platform 21 -- build
 
   # ── Android MulticastLock Java plugin ────────────────────────────────
   build-android-plugin:

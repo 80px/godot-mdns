@@ -5,7 +5,7 @@
 #   .\build.ps1 -Release     # Windows x86_64 DLL, release build
 #   .\build.ps1 -Gnu         # Windows x86_64 DLL, debug  (GNU/MinGW toolchain - no VS required)
 #   .\build.ps1 -Gnu -Release
-#   .\build.ps1 -Android     # Android arm64 + arm32 .so (requires cargo-ndk + Android NDK)
+#   .\.build.ps1 -Android     # Android arm64 + arm32 + x86_64 .so (requires cargo-ndk + Android NDK)
 #   .\build.ps1 -Android -Release
 #
 # Note: iOS and macOS cross-compilation are not supported on Windows.
@@ -32,7 +32,7 @@
 #   2. Android NDK (standalone or via Android Studio SDK Manager)
 #      Set $env:ANDROID_NDK_HOME or $env:ANDROID_NDK_ROOT to the NDK path.
 #   3. cargo-ndk:  cargo install cargo-ndk
-#   4. Rust targets: rustup target add aarch64-linux-android armv7-linux-androideabi
+#   4. Rust targets: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 
 param(
     [switch]$Release,
@@ -94,8 +94,9 @@ if ($Android) {
     }
 
     $Abis = @(
-        @{ Abi = "arm64-v8a";   OutArch = "arm64"; Triple = "aarch64-linux-android"   },
-        @{ Abi = "armeabi-v7a"; OutArch = "arm32"; Triple = "armv7-linux-androideabi" }
+        @{ Abi = "arm64-v8a";   OutArch = "arm64";  Triple = "aarch64-linux-android"   },
+        @{ Abi = "armeabi-v7a"; OutArch = "arm32";  Triple = "armv7-linux-androideabi" },
+        @{ Abi = "x86_64";      OutArch = "x86_64"; Triple = "x86_64-linux-android"    }
     )
 
     Push-Location $ScriptDir
