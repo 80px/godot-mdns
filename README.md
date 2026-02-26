@@ -207,6 +207,30 @@ GitHub Actions builds all 7 targets in parallel and publishes a `godot-mdns-v0.1
 
 ---
 
+## Releasing
+
+The version string lives in **two places** — keep them in sync before tagging:
+
+| File | Line |
+|---|---|
+| [`Cargo.toml`](Cargo.toml) | `version = "x.y.z"` under `[package]` |
+| [`addons/godot-mdns/plugin.cfg`](addons/godot-mdns/plugin.cfg) | `version="x.y.z"` |
+
+Steps to cut a release:
+
+```bash
+# 1. Update both files to the new version
+# 2. Commit
+git add Cargo.toml addons/godot-mdns/plugin.cfg
+git commit -m "chore: bump version to 0.2.0"
+
+# 3. Tag and push — this triggers the GitHub Actions release workflow
+git tag v0.2.0
+git push --follow-tags
+```
+
+---
+
 ## Integrating into a Godot project
 
 1. Build or download binaries for your target platform(s).
