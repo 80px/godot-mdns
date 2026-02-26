@@ -8,7 +8,8 @@
 //! functions, and remove/free them to stop mDNS activity automatically.
 
 use godot::prelude::*;
-use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+use mdns_sd::{IfKind, ServiceDaemon, ServiceEvent, ServiceInfo};
+use std::net::IpAddr;
 
 // ---------------------------------------------------------------------------
 // Extension entry-point
@@ -45,6 +46,12 @@ unsafe impl ExtensionLibrary for GodotMdnsExtension {}
 pub struct MdnsBrowser {
     daemon: Option<ServiceDaemon>,
     receiver: Option<mdns_sd::Receiver<ServiceEvent>>,
+    /// Optional IP address string to restrict the daemon to a single network
+    /// interface.  Set this before calling `browse()`.  On Android the WiFi
+    /// interface IP must be supplied explicitly because the driver will not
+    /// deliver multicast packets to sockets joined on the wrong interface even
+    /// after a MulticastLock is acquired.
+    iface_ip: Option<String>,
     base: Base<Node>,
 }
 
@@ -54,6 +61,7 @@ impl INode for MdnsBrowser {
         Self {
             daemon: None,
             receiver: None,
+            iface_ip: None,
             base,
         }
     }
@@ -103,6 +111,22 @@ impl MdnsBrowser {
 
     // ── Methods ──────────────────────────────────────────────────────────────
 
+    /// Pin the daemon to a single network interface by its IP address string
+    /// (e.g. `"192.168.1.42"`).  Call this **before** `browse()`.  Passing an
+    /// empty string clears any previously set hint and reverts to all-interface
+    /// auto-detection.
+    ///
+    /// On Android this is required because `mdns-sd`'s default all-interface
+    /// socket binding does not reliably receive multicast traffic through the
+    /// WiFi driver even when a MulticastLock is held.  Restricting to the
+    /// correct WiFi IP ensures the daemon's socket joins the 224.0.0.251
+    /// multicast group on exactly that interface.
+    #[func]
+    fn set_interface(&mut self, iface_ip: GString) {
+        let s = iface_ip.to_string();
+        self.iface_ip = if s.is_empty() { None } else { Some(s) };
+    }
+
     /// Start browsing for `service_type`, e.g. `"_mygame._tcp.local."`.
     ///
     /// Calling `browse()` again while already browsing stops the previous search first.
@@ -119,6 +143,27 @@ impl MdnsBrowser {
                 return;
             }
         };
+
+        // If a specific interface IP was requested (e.g. the Android WiFi IP),
+        // disable *all* interfaces on the daemon first and then re-enable only
+        // the requested one.  This ensures the multicast socket is joined on
+        // the right interface and the OS routes both queries and responses
+        // through it.
+        if let Some(ref ip_str) = self.iface_ip.clone() {
+            match ip_str.parse::<IpAddr>() {
+                Ok(ip) => {
+                    if let Err(e) = daemon.disable_interface(IfKind::All) {
+                        self.emit_browse_error(format!("disable_interface(All) failed: {e}"));
+                    }
+                    if let Err(e) = daemon.enable_interface(IfKind::Addr(ip)) {
+                        self.emit_browse_error(format!("enable_interface({ip}) failed: {e}"));
+                    }
+                }
+                Err(_) => {
+                    self.emit_browse_error(format!("set_interface: invalid IP '{}'", ip_str));
+                }
+            }
+        }
 
         let receiver = match daemon.browse(service_type.to_string().as_str()) {
             Ok(r) => r,
