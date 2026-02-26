@@ -200,7 +200,7 @@ Push a version tag to trigger a full cross-platform release build:
 
 ```bash
 git tag v0.1.0
-git push origin v0.1.0
+git push origin v0.1.0  # pushes the tag, triggering the release workflow
 ```
 
 GitHub Actions builds all 7 targets in parallel and publishes a `godot-mdns-v0.1.0.zip` as a GitHub Release. The zip extracts directly into your Godot project root.
@@ -225,8 +225,9 @@ git add Cargo.toml addons/godot-mdns/plugin.cfg
 git commit -m "chore: bump version to 0.2.0"
 
 # 3. Tag and push — this triggers the GitHub Actions release workflow
+git push                  # push the version bump commit first
 git tag v0.2.0
-git push --follow-tags
+git push origin v0.2.0    # push the tag explicitly — this triggers the workflow
 ```
 
 ---

@@ -21,6 +21,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
       - run: cargo build --target x86_64-unknown-linux-gnu --release
       - name: Stage
         run: |
@@ -43,6 +44,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
       - run: cargo build --target aarch64-unknown-linux-gnu --release
       - name: Stage
         run: |
@@ -64,6 +66,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
       - run: |
           cargo build --target x86_64-apple-darwin --release
           cargo build --target aarch64-apple-darwin --release
@@ -91,6 +94,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
       - run: cargo build --target x86_64-pc-windows-gnu --release
       - name: Stage
         run: |
@@ -113,6 +117,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
       - run: cargo build --target aarch64-apple-ios --release
       - name: Stage
         run: |
@@ -135,8 +140,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-ndk
+          locked: true
       - name: Build arm64
         run: cargo ndk -t arm64-v8a --platform 21 -- build --release
       - name: Build arm32
@@ -162,7 +171,14 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+      - name: Cache Godot Android library
+        id: cache-godot-aar
+        uses: actions/cache@v4
+        with:
+          path: android-plugin/libs/godot-lib.aar
+          key: godot-lib-4.6-stable-aar
       - name: Download Godot Android library
+        if: steps.cache-godot-aar.outputs.cache-hit != 'true'
         working-directory: android-plugin
         run: |
           mkdir -p libs
@@ -234,6 +250,15 @@ jobs:
 
           # Android Java plugin .aar
           cp all-bins/MulticastLockPlugin.aar addon/addons/godot-mdns/android/
+
+          # Mirror each release/ binary into a debug/ sibling so the addon works
+          # when the Godot editor loads it (editor always requests the debug variant).
+          BIN=addon/addons/godot-mdns/bin
+          for rel_dir in $(find "$BIN" -type d -name release); do
+            debug_dir="${rel_dir%/release}/debug"
+            mkdir -p "$debug_dir"
+            cp "$rel_dir"/* "$debug_dir"/
+          done
 
       - name: Create zip
         run: |

@@ -29,6 +29,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
 
       - name: Build (debug + release)
         run: |
@@ -66,6 +67,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
 
       - name: Build (debug + release)
         run: |
@@ -100,6 +102,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
 
       - name: Build x86_64 (debug + release)
         run: |
@@ -148,6 +151,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
 
       - name: Build (debug + release)
         run: |
@@ -182,6 +186,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
 
       - name: Build (debug + release)
         run: |
@@ -216,9 +221,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+          shared-key: godot-mdns
 
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-ndk
+          locked: true
 
       - name: Build arm64 (debug + release)
         run: |
@@ -258,7 +267,15 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Cache Godot Android library
+        id: cache-godot-aar
+        uses: actions/cache@v4
+        with:
+          path: android-plugin/libs/godot-lib.aar
+          key: godot-lib-4.6-stable-aar
+
       - name: Download Godot Android library
+        if: steps.cache-godot-aar.outputs.cache-hit != 'true'
         working-directory: android-plugin
         run: |
           mkdir -p libs
