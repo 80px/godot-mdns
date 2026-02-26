@@ -1,0 +1,8 @@
+# Rust build artefacts
+/target/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp

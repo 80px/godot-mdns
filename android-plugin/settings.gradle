@@ -1,0 +1,3 @@
+// The project name determines the output AAR filename:
+//   build/outputs/aar/MulticastLockPlugin-release.aar
+rootProject.name = 'MulticastLockPlugin'

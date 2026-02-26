@@ -1,0 +1,53 @@
+; ---------------------------------------------------------------------------
+; godot-mdns.gdextension
+;
+; This file lives at:
+;   <godot-project-root>/addons/godot-mdns/godot-mdns.gdextension
+;
+; Binaries are expected in:
+;   <godot-project-root>/addons/godot-mdns/bin/<platform>/<arch>/<profile>/
+;
+; Run  ./build.sh            to compile for the host platform (macOS/Linux/WSL).
+; Run  ./build.ps1           to compile natively on Windows (requires Rust + VS Build Tools).
+; Run  ./build.sh --ios      to compile the iOS static lib (macOS host required).
+; For all platforms at once, push a version tag — the CI release workflow handles everything.
+;
+; NOTE — Android: the mDNS .so is only half the story on Android.
+;   The OS silently drops multicast UDP unless a MulticastLock is held.
+;   Enable the bundled MulticastLock plugin (addons/godot-mdns/android/) in your
+;   Android Export settings and call it before starting MdnsBrowser:
+;     Engine.get_singleton("MulticastLock").acquire_multicast_lock()
+;
+; NOTE — iOS: the com.apple.developer.networking.multicast entitlement is required.
+;   Add it in Project > Export > iOS > Custom Entitlements.
+; ---------------------------------------------------------------------------
+
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.1
+reloadable = true
+
+[libraries]
+; ── Linux ──────────────────────────────────────────────────────────────────
+linux.debug.x86_64     = "res://addons/godot-mdns/bin/linux/x86_64/debug/libgodot_mdns.so"
+linux.release.x86_64   = "res://addons/godot-mdns/bin/linux/x86_64/release/libgodot_mdns.so"
+linux.debug.arm64      = "res://addons/godot-mdns/bin/linux/arm64/debug/libgodot_mdns.so"
+linux.release.arm64    = "res://addons/godot-mdns/bin/linux/arm64/release/libgodot_mdns.so"
+
+; ── macOS (universal binary — contains both x86_64 and arm64 slices) ───────
+macos.debug             = "res://addons/godot-mdns/bin/macos/universal/debug/libgodot_mdns.dylib"
+macos.release           = "res://addons/godot-mdns/bin/macos/universal/release/libgodot_mdns.dylib"
+
+; ── Windows ────────────────────────────────────────────────────────────────
+windows.debug.x86_64   = "res://addons/godot-mdns/bin/windows/x86_64/debug/godot_mdns.dll"
+windows.release.x86_64 = "res://addons/godot-mdns/bin/windows/x86_64/release/godot_mdns.dll"
+
+; ── iOS (static library, linked at Godot export time) ───────────────────────
+ios.debug   = "res://addons/godot-mdns/bin/ios/arm64/debug/libgodot_mdns.a"
+ios.release = "res://addons/godot-mdns/bin/ios/arm64/release/libgodot_mdns.a"
+
+; ── Android (.so loaded at runtime; MulticastLock plugin also required) ──────
+android.debug.arm64   = "res://addons/godot-mdns/bin/android/arm64/debug/libgodot_mdns.so"
+android.release.arm64 = "res://addons/godot-mdns/bin/android/arm64/release/libgodot_mdns.so"
+android.debug.arm32   = "res://addons/godot-mdns/bin/android/arm32/debug/libgodot_mdns.so"
+android.release.arm32 = "res://addons/godot-mdns/bin/android/arm32/release/libgodot_mdns.so"

@@ -1,0 +1,7 @@
+# Compiled binaries — built locally by godot-mdns/build.sh or unpacked from a release zip.
+# The bin/ directory structure is preserved via .gitkeep files; actual binaries are not committed.
+bin/**/*.so
+bin/**/*.dylib
+bin/**/*.dll
+bin/**/*.pdb
+bin/**/*.a

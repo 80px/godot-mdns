@@ -1,0 +1,294 @@
+name: Release godot-mdns
+
+# Trigger by pushing a version tag, e.g.:
+#   git tag v0.2.0 && git push origin v0.2.0
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  # ── Build all platforms (release profile only) ──────────────────────────────
+
+  build-linux-x86_64:
+    name: Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - run: cargo build --target x86_64-unknown-linux-gnu --release
+      - name: Stage
+        run: |
+          mkdir -p staged/linux/x86_64/release
+          cp target/x86_64-unknown-linux-gnu/release/libgodot_mdns.so staged/linux/x86_64/release/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-x86_64
+          path: staged/
+
+  build-linux-arm64:
+    name: Linux arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - run: cargo build --target aarch64-unknown-linux-gnu --release
+      - name: Stage
+        run: |
+          mkdir -p staged/linux/arm64/release
+          cp target/aarch64-unknown-linux-gnu/release/libgodot_mdns.so staged/linux/arm64/release/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-arm64
+          path: staged/
+
+  build-macos:
+    name: macOS universal
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - run: |
+          cargo build --target x86_64-apple-darwin --release
+          cargo build --target aarch64-apple-darwin --release
+      - name: Lipo
+        run: |
+          mkdir -p staged/macos/universal/release
+          lipo -create \
+            target/x86_64-apple-darwin/release/libgodot_mdns.dylib \
+            target/aarch64-apple-darwin/release/libgodot_mdns.dylib \
+            -output staged/macos/universal/release/libgodot_mdns.dylib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: staged/
+
+  build-windows-x86_64:
+    name: Windows x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - run: cargo build --target x86_64-pc-windows-gnu --release
+      - name: Stage
+        run: |
+          mkdir -p staged/windows/x86_64/release
+          cp target/x86_64-pc-windows-gnu/release/godot_mdns.dll staged/windows/x86_64/release/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x86_64
+          path: staged/
+
+  # ── iOS arm64 (physical device, static lib) ────────────────────────────────
+  build-ios:
+    name: iOS arm64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - run: cargo build --target aarch64-apple-ios --release
+      - name: Stage
+        run: |
+          mkdir -p staged/ios/arm64/release
+          cp target/aarch64-apple-ios/release/libgodot_mdns.a staged/ios/arm64/release/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-ios
+          path: staged/
+
+  # ── Android arm64 + arm32 (via cargo-ndk) ───────────────────────────────────
+  build-android:
+    name: Android arm64 + arm32
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Build arm64
+        run: cargo ndk -t arm64-v8a --platform 21 -- build --release
+      - name: Build arm32
+        run: cargo ndk -t armeabi-v7a --platform 21 -- build --release
+      - name: Stage
+        run: |
+          mkdir -p staged/android/arm64/release
+          mkdir -p staged/android/arm32/release
+          cp target/aarch64-linux-android/release/libgodot_mdns.so   staged/android/arm64/release/
+          cp target/armv7-linux-androideabi/release/libgodot_mdns.so staged/android/arm32/release/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: staged/
+
+  # ── Android MulticastLock Java plugin ───────────────────────────────────────
+  build-android-plugin:
+    name: Android MulticastLock plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Download Godot Android library
+        working-directory: android-plugin
+        run: |
+          mkdir -p libs
+          curl -L -o libs/godot-lib.aar \
+            "https://github.com/godotengine/godot/releases/download/4.6-stable/godot-lib.4.6.stable.template_release.aar"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build plugin
+        working-directory: android-plugin
+        run: gradle assembleRelease
+      - name: Stage
+        run: |
+          mkdir -p staged-plugin
+          cp android-plugin/build/outputs/aar/MulticastLockPlugin-release.aar \
+             staged-plugin/MulticastLockPlugin.aar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android-plugin
+          path: staged-plugin/
+
+  # ── Assemble addon zip and create GitHub Release ────────────────────────────
+  package-and-release:
+    name: Package & publish GitHub Release
+    needs:
+      - build-linux-x86_64
+      - build-linux-arm64
+      - build-macos
+      - build-windows-x86_64
+      - build-ios
+      - build-android
+      - build-android-plugin
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to create a GitHub Release
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download all per-platform staged binaries into ./all-bins/
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-bins/
+          pattern: release-*
+          merge-multiple: true
+
+      # Assemble the final addon layout:
+      #   addons/godot-mdns/
+      #     godot-mdns.gdextension  plugin.cfg
+      #     bin/linux/x86_64/release/  bin/linux/arm64/release/
+      #     bin/macos/universal/release/
+      #     bin/windows/x86_64/release/
+      #     bin/ios/arm64/release/
+      #     bin/android/arm64/release/  bin/android/arm32/release/
+      #     android/MulticastLockPlugin.gdap + MulticastLockPlugin.aar
+      - name: Assemble addon directory
+        run: |
+          mkdir -p addon/addons/godot-mdns/bin
+          mkdir -p addon/addons/godot-mdns/android
+
+          # Metadata files from the repo
+          cp addons/godot-mdns/godot-mdns.gdextension addon/addons/godot-mdns/
+          cp addons/godot-mdns/plugin.cfg             addon/addons/godot-mdns/
+          cp addons/godot-mdns/android/MulticastLockPlugin.gdap addon/addons/godot-mdns/android/
+
+          # Binaries from CI build steps
+          cp -r all-bins/linux   addon/addons/godot-mdns/bin/
+          cp -r all-bins/macos   addon/addons/godot-mdns/bin/
+          cp -r all-bins/windows addon/addons/godot-mdns/bin/
+          cp -r all-bins/ios     addon/addons/godot-mdns/bin/
+          cp -r all-bins/android addon/addons/godot-mdns/bin/
+
+          # Android Java plugin .aar
+          cp all-bins/MulticastLockPlugin.aar addon/addons/godot-mdns/android/
+
+      - name: Create zip
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          cd addon
+          zip -r "../godot-mdns-${TAG}.zip" addons/
+          cd ..
+          echo "ZIP=godot-mdns-${TAG}.zip" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "godot-mdns ${{ github.ref_name }}"
+          body: |
+            ## Installation
+
+            1. Download `${{ env.ZIP }}` below.
+            2. Extract the zip into your Godot project root — it places files under `addons/godot-mdns/`.
+            3. Restart Godot. `MdnsBrowser` and `MdnsAdvertiser` will appear in the **Add Node** dialog.
+
+            ## Platform-specific setup
+
+            **Android** — two extra steps required:
+            - Enable **MulticastLock** in *Project → Export → Android → Plugins*.
+            - Check **CHANGE_WIFI_MULTICAST_STATE** in *Project → Export → Android → Permissions*.
+            - Before calling `browse()`, run this GDScript:
+              ```gdscript
+              if OS.get_name() == "Android":
+                  Engine.get_singleton("MulticastLock").acquire_multicast_lock()
+              ```
+
+            **iOS** — two export settings required:
+            - In *Project → Export → iOS → Additional Plist Content*, add:
+              ```xml
+              <key>NSLocalNetworkUsageDescription</key>
+              <string>Used to discover local game servers.</string>
+              ```
+            - In *Project → Export → iOS → Custom Entitlements*, add:
+              ```xml
+              <key>com.apple.developer.networking.multicast</key>
+              <true/>
+              ```
+            - The multicast entitlement requires **Apple approval** for App Store distribution.
+
+            ## Platforms included
+
+            | Platform | Arch | Binary |
+            |---|---|---|
+            | Linux | x86\_64 | `libgodot_mdns.so` |
+            | Linux | arm64 | `libgodot_mdns.so` |
+            | macOS | universal (x86\_64 + arm64) | `libgodot_mdns.dylib` |
+            | Windows | x86\_64 | `godot_mdns.dll` |
+            | iOS | arm64 (device) | `libgodot_mdns.a` |
+            | Android | arm64 | `libgodot_mdns.so` |
+            | Android | arm32 | `libgodot_mdns.so` |
+          files: ${{ env.ZIP }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

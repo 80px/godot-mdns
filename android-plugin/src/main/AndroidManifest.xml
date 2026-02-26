@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifest for the MulticastLock Godot Android plugin.
+
+  Only declares the package. The CHANGE_WIFI_MULTICAST_STATE permission is
+  NOT declared here — it must be added in the Godot Export > Android > Permissions
+  panel so Godot merges it into the final APK/AAB manifest. Adding it here
+  would duplicate it and can cause Gradle merge warnings.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.micrommo.godotmdns">
+</manifest>

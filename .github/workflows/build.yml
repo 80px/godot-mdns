@@ -1,0 +1,283 @@
+name: Build godot-mdns
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "android-plugin/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/build.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # ── Linux x86_64 ────────────────────────────────────────────────────────────
+  build-linux-x86_64:
+    name: Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Build (debug + release)
+        run: |
+          cargo build --target x86_64-unknown-linux-gnu
+          cargo build --target x86_64-unknown-linux-gnu --release
+
+      - name: Stage binaries
+        run: |
+          mkdir -p staged/linux/x86_64/debug
+          mkdir -p staged/linux/x86_64/release
+          cp target/x86_64-unknown-linux-gnu/debug/libgodot_mdns.so   staged/linux/x86_64/debug/
+          cp target/x86_64-unknown-linux-gnu/release/libgodot_mdns.so staged/linux/x86_64/release/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-mdns-linux-x86_64
+          path: staged/
+
+  # ── Linux arm64 (cross-compiled) ────────────────────────────────────────────
+  build-linux-arm64:
+    name: Linux arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install aarch64 cross-compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Build (debug + release)
+        run: |
+          cargo build --target aarch64-unknown-linux-gnu
+          cargo build --target aarch64-unknown-linux-gnu --release
+
+      - name: Stage binaries
+        run: |
+          mkdir -p staged/linux/arm64/debug
+          mkdir -p staged/linux/arm64/release
+          cp target/aarch64-unknown-linux-gnu/debug/libgodot_mdns.so   staged/linux/arm64/debug/
+          cp target/aarch64-unknown-linux-gnu/release/libgodot_mdns.so staged/linux/arm64/release/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-mdns-linux-arm64
+          path: staged/
+
+  # ── macOS x86_64 + arm64 → universal binary ────────────────────────────────
+  build-macos:
+    name: macOS universal
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Build x86_64 (debug + release)
+        run: |
+          cargo build --target x86_64-apple-darwin
+          cargo build --target x86_64-apple-darwin --release
+
+      - name: Build arm64 (debug + release)
+        run: |
+          cargo build --target aarch64-apple-darwin
+          cargo build --target aarch64-apple-darwin --release
+
+      - name: Lipo universal binaries
+        run: |
+          mkdir -p staged/macos/universal/debug
+          mkdir -p staged/macos/universal/release
+          lipo -create \
+            target/x86_64-apple-darwin/debug/libgodot_mdns.dylib \
+            target/aarch64-apple-darwin/debug/libgodot_mdns.dylib \
+            -output staged/macos/universal/debug/libgodot_mdns.dylib
+          lipo -create \
+            target/x86_64-apple-darwin/release/libgodot_mdns.dylib \
+            target/aarch64-apple-darwin/release/libgodot_mdns.dylib \
+            -output staged/macos/universal/release/libgodot_mdns.dylib
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-mdns-macos
+          path: staged/
+
+  # ── Windows x86_64 (cross-compiled from Linux via MinGW) ───────────────────
+  build-windows-x86_64:
+    name: Windows x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW cross-compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Build (debug + release)
+        run: |
+          cargo build --target x86_64-pc-windows-gnu
+          cargo build --target x86_64-pc-windows-gnu --release
+
+      - name: Stage binaries
+        run: |
+          mkdir -p staged/windows/x86_64/debug
+          mkdir -p staged/windows/x86_64/release
+          cp target/x86_64-pc-windows-gnu/debug/godot_mdns.dll   staged/windows/x86_64/debug/
+          cp target/x86_64-pc-windows-gnu/release/godot_mdns.dll staged/windows/x86_64/release/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-mdns-windows-x86_64
+          path: staged/
+
+  # ── iOS arm64 (physical device, static lib) ──────────────────────────────
+  build-ios:
+    name: iOS arm64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Build (debug + release)
+        run: |
+          cargo build --target aarch64-apple-ios
+          cargo build --target aarch64-apple-ios --release
+
+      - name: Stage binaries
+        run: |
+          mkdir -p staged/ios/arm64/debug
+          mkdir -p staged/ios/arm64/release
+          cp target/aarch64-apple-ios/debug/libgodot_mdns.a   staged/ios/arm64/debug/
+          cp target/aarch64-apple-ios/release/libgodot_mdns.a staged/ios/arm64/release/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-mdns-ios
+          path: staged/
+
+  # ── Android arm64 + arm32 (via cargo-ndk) ─────────────────────────────
+  build-android:
+    name: Android arm64 + arm32
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build arm64 (debug + release)
+        run: |
+          cargo ndk -t arm64-v8a --platform 21 -- build
+          cargo ndk -t arm64-v8a --platform 21 -- build --release
+
+      - name: Build arm32 (debug + release)
+        run: |
+          cargo ndk -t armeabi-v7a --platform 21 -- build
+          cargo ndk -t armeabi-v7a --platform 21 -- build --release
+
+      - name: Stage binaries
+        run: |
+          mkdir -p staged/android/arm64/debug
+          mkdir -p staged/android/arm64/release
+          mkdir -p staged/android/arm32/debug
+          mkdir -p staged/android/arm32/release
+          cp target/aarch64-linux-android/debug/libgodot_mdns.so   staged/android/arm64/debug/
+          cp target/aarch64-linux-android/release/libgodot_mdns.so staged/android/arm64/release/
+          cp target/armv7-linux-androideabi/debug/libgodot_mdns.so   staged/android/arm32/debug/
+          cp target/armv7-linux-androideabi/release/libgodot_mdns.so staged/android/arm32/release/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-mdns-android
+          path: staged/
+
+  # ── Android MulticastLock Java plugin ────────────────────────────────
+  build-android-plugin:
+    name: Android MulticastLock plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Download Godot Android library
+        working-directory: android-plugin
+        run: |
+          mkdir -p libs
+          curl -L -o libs/godot-lib.aar \
+            "https://github.com/godotengine/godot/releases/download/4.6-stable/godot-lib.4.6.stable.template_release.aar"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build plugin
+        working-directory: android-plugin
+        run: gradle assembleRelease
+
+      - name: Stage
+        run: |
+          mkdir -p staged-plugin
+          cp android-plugin/build/outputs/aar/MulticastLockPlugin-release.aar \
+             staged-plugin/MulticastLockPlugin.aar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-mdns-android-plugin
+          path: staged-plugin/
