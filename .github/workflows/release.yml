@@ -301,7 +301,7 @@ jobs:
               <key>com.apple.developer.networking.multicast</key>
               <true/>
               ```
-            - The multicast entitlement requires **Apple approval** for App Store distribution.
+            - The multicast entitlement requires **Apple approval** before submission — request it at [developer.apple.com/contact/request/networking-multicast](https://developer.apple.com/contact/request/networking-multicast).
 
             ## Platforms included
 

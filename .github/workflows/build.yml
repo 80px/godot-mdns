@@ -31,22 +31,8 @@ jobs:
           workspaces: .
           shared-key: godot-mdns
 
-      - name: Build (debug + release)
-        run: |
-          cargo build --target x86_64-unknown-linux-gnu
-          cargo build --target x86_64-unknown-linux-gnu --release
-
-      - name: Stage binaries
-        run: |
-          mkdir -p staged/linux/x86_64/debug
-          mkdir -p staged/linux/x86_64/release
-          cp target/x86_64-unknown-linux-gnu/debug/libgodot_mdns.so   staged/linux/x86_64/debug/
-          cp target/x86_64-unknown-linux-gnu/release/libgodot_mdns.so staged/linux/x86_64/release/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: godot-mdns-linux-x86_64
-          path: staged/
+      - name: Build (debug)
+        run: cargo build --target x86_64-unknown-linux-gnu
 
   # ── Linux arm64 (cross-compiled) ────────────────────────────────────────────
   build-linux-arm64:
@@ -69,22 +55,8 @@ jobs:
           workspaces: .
           shared-key: godot-mdns
 
-      - name: Build (debug + release)
-        run: |
-          cargo build --target aarch64-unknown-linux-gnu
-          cargo build --target aarch64-unknown-linux-gnu --release
-
-      - name: Stage binaries
-        run: |
-          mkdir -p staged/linux/arm64/debug
-          mkdir -p staged/linux/arm64/release
-          cp target/aarch64-unknown-linux-gnu/debug/libgodot_mdns.so   staged/linux/arm64/debug/
-          cp target/aarch64-unknown-linux-gnu/release/libgodot_mdns.so staged/linux/arm64/release/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: godot-mdns-linux-arm64
-          path: staged/
+      - name: Build (debug)
+        run: cargo build --target aarch64-unknown-linux-gnu
 
   # ── macOS x86_64 + arm64 → universal binary ────────────────────────────────
   build-macos:
@@ -104,33 +76,19 @@ jobs:
           workspaces: .
           shared-key: godot-mdns
 
-      - name: Build x86_64 (debug + release)
-        run: |
-          cargo build --target x86_64-apple-darwin
-          cargo build --target x86_64-apple-darwin --release
+      - name: Build x86_64 (debug)
+        run: cargo build --target x86_64-apple-darwin
 
-      - name: Build arm64 (debug + release)
-        run: |
-          cargo build --target aarch64-apple-darwin
-          cargo build --target aarch64-apple-darwin --release
+      - name: Build arm64 (debug)
+        run: cargo build --target aarch64-apple-darwin
 
-      - name: Lipo universal binaries
+      - name: Lipo universal binary (debug)
         run: |
           mkdir -p staged/macos/universal/debug
-          mkdir -p staged/macos/universal/release
           lipo -create \
             target/x86_64-apple-darwin/debug/libgodot_mdns.dylib \
             target/aarch64-apple-darwin/debug/libgodot_mdns.dylib \
             -output staged/macos/universal/debug/libgodot_mdns.dylib
-          lipo -create \
-            target/x86_64-apple-darwin/release/libgodot_mdns.dylib \
-            target/aarch64-apple-darwin/release/libgodot_mdns.dylib \
-            -output staged/macos/universal/release/libgodot_mdns.dylib
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: godot-mdns-macos
-          path: staged/
 
   # ── Windows x86_64 (cross-compiled from Linux via MinGW) ───────────────────
   build-windows-x86_64:
@@ -153,22 +111,8 @@ jobs:
           workspaces: .
           shared-key: godot-mdns
 
-      - name: Build (debug + release)
-        run: |
-          cargo build --target x86_64-pc-windows-gnu
-          cargo build --target x86_64-pc-windows-gnu --release
-
-      - name: Stage binaries
-        run: |
-          mkdir -p staged/windows/x86_64/debug
-          mkdir -p staged/windows/x86_64/release
-          cp target/x86_64-pc-windows-gnu/debug/godot_mdns.dll   staged/windows/x86_64/debug/
-          cp target/x86_64-pc-windows-gnu/release/godot_mdns.dll staged/windows/x86_64/release/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: godot-mdns-windows-x86_64
-          path: staged/
+      - name: Build (debug)
+        run: cargo build --target x86_64-pc-windows-gnu
 
   # ── iOS arm64 (physical device, static lib) ──────────────────────────────
   build-ios:
@@ -188,22 +132,8 @@ jobs:
           workspaces: .
           shared-key: godot-mdns
 
-      - name: Build (debug + release)
-        run: |
-          cargo build --target aarch64-apple-ios
-          cargo build --target aarch64-apple-ios --release
-
-      - name: Stage binaries
-        run: |
-          mkdir -p staged/ios/arm64/debug
-          mkdir -p staged/ios/arm64/release
-          cp target/aarch64-apple-ios/debug/libgodot_mdns.a   staged/ios/arm64/debug/
-          cp target/aarch64-apple-ios/release/libgodot_mdns.a staged/ios/arm64/release/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: godot-mdns-ios
-          path: staged/
+      - name: Build (debug)
+        run: cargo build --target aarch64-apple-ios
 
   # ── Android arm64 + arm32 (via cargo-ndk) ─────────────────────────────
   build-android:
@@ -229,31 +159,11 @@ jobs:
           crate: cargo-ndk
           locked: true
 
-      - name: Build arm64 (debug + release)
-        run: |
-          cargo ndk -t arm64-v8a --platform 21 -- build
-          cargo ndk -t arm64-v8a --platform 21 -- build --release
+      - name: Build arm64 (debug)
+        run: cargo ndk -t arm64-v8a --platform 21 -- build
 
-      - name: Build arm32 (debug + release)
-        run: |
-          cargo ndk -t armeabi-v7a --platform 21 -- build
-          cargo ndk -t armeabi-v7a --platform 21 -- build --release
-
-      - name: Stage binaries
-        run: |
-          mkdir -p staged/android/arm64/debug
-          mkdir -p staged/android/arm64/release
-          mkdir -p staged/android/arm32/debug
-          mkdir -p staged/android/arm32/release
-          cp target/aarch64-linux-android/debug/libgodot_mdns.so   staged/android/arm64/debug/
-          cp target/aarch64-linux-android/release/libgodot_mdns.so staged/android/arm64/release/
-          cp target/armv7-linux-androideabi/debug/libgodot_mdns.so   staged/android/arm32/debug/
-          cp target/armv7-linux-androideabi/release/libgodot_mdns.so staged/android/arm32/release/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: godot-mdns-android
-          path: staged/
+      - name: Build arm32 (debug)
+        run: cargo ndk -t armeabi-v7a --platform 21 -- build
 
   # ── Android MulticastLock Java plugin ────────────────────────────────
   build-android-plugin:

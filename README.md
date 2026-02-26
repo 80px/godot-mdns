@@ -191,19 +191,26 @@ Also build the MulticastLock Java plugin (one-time, required for Android):
 cd android-plugin
 # Download godot-lib.aar first — see android-plugin/README.md
 gradle assembleRelease
-cp build/outputs/aar/MulticastLockPlugin-release.aar ../addons/godot-mdns/android/
+cp build/outputs/aar/MulticastLockPlugin-release.aar ../addons/godot-mdns/android/MulticastLockPlugin.aar
 ```
 
-### CI / all platforms
+### CI
 
-Push a version tag to trigger a full cross-platform release build:
+Two GitHub Actions workflows run automatically:
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| **Build** | Push to `main` (when `src/`, `Cargo.toml`, or `Cargo.lock` change), any PR, or manual dispatch | Debug-only compile check across all 7 platforms. Confirms nothing is broken cross-platform. No artifacts produced. |
+| **Release** | Pushing a `v*` tag | Release-profile build for all platforms, packages a zip, and publishes a GitHub Release. |
+
+Day-to-day pushes to `main` run a fast compile check. The release workflow only fires when you deliberately tag a version:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0  # pushes the tag, triggering the release workflow
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
-GitHub Actions builds all 7 targets in parallel and publishes a `godot-mdns-v0.1.0.zip` as a GitHub Release. The zip extracts directly into your Godot project root.
+GitHub Actions builds all 7 targets in parallel and publishes a `godot-mdns-v0.2.0.zip` as a GitHub Release. The zip extracts directly into your Godot project root.
 
 ---
 
@@ -244,7 +251,45 @@ git push origin v0.2.0    # push the tag explicitly — this triggers the workfl
 
 ### Android
 
-Android silently drops multicast UDP packets at the WiFi driver level unless a `WifiManager.MulticastLock` is held. The bundled Java plugin handles this.
+#### Why a Java plugin is needed
+
+Android silently drops all inbound multicast UDP packets at the WiFi driver level by default. Because mDNS uses multicast UDP on port 5353, `MdnsBrowser` will never receive any responses on Android without intervention — the datagrams are discarded before the Rust code ever sees them.
+
+The fix is a `WifiManager.MulticastLock`. While the lock is held, Android instructs the WiFi hardware to pass multicast packets up the network stack to the application. The critical constraint is that this lock **can only be acquired through the Android Java API** — there is no NDK (C/C++ or Rust) equivalent. Native code alone cannot enable multicast reception.
+
+#### What the bundled plugin does
+
+The `android-plugin/` directory contains a minimal Godot 4 Android plugin written in Java (`MulticastLockPlugin.java`). It extends `GodotPlugin`, which lets Godot load it as a singleton at runtime. The plugin:
+
+1. Registers itself under the name `"MulticastLock"` (via `getPluginName()`).
+2. Exposes three methods annotated with `@UsedByGodot` so GDScript can call them:
+   - `acquire_multicast_lock()` — obtains a `WifiManager.MulticastLock` tagged `"godot-mdns"` with reference counting enabled and calls `acquire()` on it.
+   - `release_multicast_lock()` — calls `release()` and nulls the reference.
+   - `is_multicast_lock_held() -> bool` — returns the current lock state.
+3. Overrides `onMainDestroy()` to always release the lock when the app is destroyed, preventing a system-level lock leak.
+
+The plugin is packaged as an Android Archive (`.aar`) and declared to Godot via `addons/godot-mdns/android/MulticastLockPlugin.gdap`, which maps the plugin name `"MulticastLock"` to `MulticastLockPlugin.aar`.
+
+#### Build pipeline summary
+
+```
+build.sh --android  (or build.ps1 -Android)
+  └─ cargo ndk -t arm64-v8a   → target/aarch64-linux-android/<profile>/libgodot_mdns.so
+  └─ cargo ndk -t armeabi-v7a → target/armv7-linux-androideabi/<profile>/libgodot_mdns.so
+
+android-plugin/ (one-time)
+  └─ gradle assembleRelease   → MulticastLockPlugin-release.aar
+                              → copied to addons/godot-mdns/android/MulticastLockPlugin.aar
+
+Godot Android export
+  ├─ loads libgodot_mdns.so  (GDExtension — provides MdnsBrowser / MdnsAdvertiser nodes)
+  ├─ loads MulticastLockPlugin.aar  (GodotPlugin — provides the MulticastLock singleton)
+  └─ merges CHANGE_WIFI_MULTICAST_STATE permission into the final APK/AAB manifest
+```
+
+`cargo ndk` wraps the Android NDK cross-compiler so that ordinary `cargo build` invocations target the correct Android ABI and NDK sysroot. The resulting `.so` files are standard GDExtension shared libraries — Godot loads them automatically based on the `[libraries]` entries in `godot-mdns.gdextension`.
+
+#### Export settings
 
 **In the Godot Export dialog → Android:**
 
@@ -252,23 +297,27 @@ Android silently drops multicast UDP packets at the WiFi driver level unless a `
 2. **Permissions tab** — check `CHANGE_WIFI_MULTICAST_STATE`
 3. Ensure `addons/godot-mdns/android/MulticastLockPlugin.aar` is present (built from `android-plugin/` or downloaded from a release)
 
-**In GDScript**, call this before `MdnsBrowser.browse()`:
+#### GDScript usage
+
+Acquire the lock **before** calling `MdnsBrowser.browse()`:
 
 ```gdscript
 if OS.get_name() == "Android":
     Engine.get_singleton("MulticastLock").acquire_multicast_lock()
 ```
 
-Release it when mDNS is no longer needed:
+Release it when mDNS is no longer needed to conserve battery:
 
 ```gdscript
 if OS.get_name() == "Android":
     Engine.get_singleton("MulticastLock").release_multicast_lock()
 ```
 
+The lock is also automatically released in `onMainDestroy()` as a safety net, but explicit release is preferred.
+
 ### iOS
 
-iOS requires two export settings and, for App Store distribution, an Apple entitlement approval.
+iOS requires two export settings and an Apple entitlement approval before you can ship.
 
 **In the Godot Export dialog → iOS → Additional Plist Content**, add:
 
@@ -284,7 +333,7 @@ iOS requires two export settings and, for App Store distribution, an Apple entit
 <true/>
 ```
 
-> **App Store distribution:** The `com.apple.developer.networking.multicast` entitlement requires explicit Apple approval. Apply at [developer.apple.com → Account → Additional Capabilities → Multicast Networking](https://developer.apple.com/account/). TestFlight and sideloaded builds work without approval as long as the entitlement is in your provisioning profile.
+> **Apple approval required:** The `com.apple.developer.networking.multicast` entitlement must be explicitly approved by Apple before your app can send or receive IP multicast on iOS. Request it at the [Multicast Networking Entitlement Request](https://developer.apple.com/contact/request/networking-multicast) page. Without approval your binary will be rejected at App Store submission.
 
 ---
 

@@ -24,9 +24,6 @@ mdns-sd = "0.13"
 # Cross-platform hostname retrieval for service advertisement
 hostname = "0.4"
 
-# ── Build-time dependencies ────────────────────────────────────────────────────
-[build-dependencies]
-
 # ── Release profile ─────────────────────────────────────────────────────────
 [profile.release]
 opt-level = "z"       # Minimise binary size
