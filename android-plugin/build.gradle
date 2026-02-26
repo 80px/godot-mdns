@@ -48,4 +48,5 @@ dependencies {
     // Godot Android library — provides GodotPlugin + @UsedByGodot.
     // Must be placed at libs/godot-lib.aar before building (see above).
     compileOnly fileTree(dir: 'libs', include: ['*.aar'])
+    compileOnly 'androidx.annotation:annotation:1.9.1'
 }

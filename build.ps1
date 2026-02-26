@@ -14,21 +14,21 @@
 #       use WSL and run: ./build.sh --linux
 #
 # MSVC toolchain prerequisites (default):
-#   1. Rust (rustup) — https://rustup.rs
+#   1. Rust (rustup) - https://rustup.rs
 #   2. Visual Studio 2019/2022  OR  Build Tools for Visual Studio:
 #      https://aka.ms/vs/17/release/vs_BuildTools.exe
 #      During install select: "Desktop development with C++" workload.
 #
-# GNU toolchain prerequisites (-Gnu, lighter — no Visual Studio needed):
-#   1. Rust (rustup) — https://rustup.rs
-#   2. MSYS2 — https://www.msys2.org  (installs the MinGW-w64 gcc toolchain)
+# GNU toolchain prerequisites (-Gnu, lighter - no Visual Studio needed):
+#   1. Rust (rustup) - https://rustup.rs
+#   2. MSYS2 - https://www.msys2.org  (installs the MinGW-w64 gcc toolchain)
 #      After MSYS2 installs, open the MSYS2 UCRT64 shell and run:
 #        pacman -S mingw-w64-ucrt-x86_64-gcc
 #      Then add  C:\msys64\ucrt64\bin  to your system PATH.
 #   - OR - winlibs standalone GCC: https://winlibs.com  (extract and add to PATH)
 #
 # Android prerequisites (-Android):
-#   1. Rust (rustup) — https://rustup.rs
+#   1. Rust (rustup) - https://rustup.rs
 #   2. Android NDK (standalone or via Android Studio SDK Manager)
 #      Set $env:ANDROID_NDK_HOME or $env:ANDROID_NDK_ROOT to the NDK path.
 #   3. cargo-ndk:  cargo install cargo-ndk
