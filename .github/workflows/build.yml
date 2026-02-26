@@ -135,9 +135,9 @@ jobs:
       - name: Build (debug)
         run: cargo build --target aarch64-apple-ios
 
-  # ── Android arm64 + arm32 (via cargo-ndk) ─────────────────────────────
+  # ── Android arm64 + arm32 + x86_64 (via cargo-ndk) ───────────────────
   build-android:
-    name: Android arm64 + arm32
+    name: Android arm64 + arm32 + x86_64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
