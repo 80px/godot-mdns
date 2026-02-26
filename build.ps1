@@ -1,9 +1,9 @@
-# build.ps1 — compile godot-mdns natively on Windows and copy outputs into addons/godot-mdns/bin/.
+# build.ps1 - compile godot-mdns natively on Windows and copy outputs into addons/godot-mdns/bin/.
 #
 # Usage (from the godot-mdns\ directory):
 #   .\build.ps1              # Windows x86_64 DLL, debug build  (MSVC toolchain)
 #   .\build.ps1 -Release     # Windows x86_64 DLL, release build
-#   .\build.ps1 -Gnu         # Windows x86_64 DLL, debug  (GNU/MinGW toolchain — no VS required)
+#   .\build.ps1 -Gnu         # Windows x86_64 DLL, debug  (GNU/MinGW toolchain - no VS required)
 #   .\build.ps1 -Gnu -Release
 #   .\build.ps1 -Android     # Android arm64 + arm32 .so (requires cargo-ndk + Android NDK)
 #   .\build.ps1 -Android -Release
@@ -25,7 +25,7 @@
 #      After MSYS2 installs, open the MSYS2 UCRT64 shell and run:
 #        pacman -S mingw-w64-ucrt-x86_64-gcc
 #      Then add  C:\msys64\ucrt64\bin  to your system PATH.
-#   — OR — winlibs standalone GCC: https://winlibs.com  (extract and add to PATH)
+#   - OR - winlibs standalone GCC: https://winlibs.com  (extract and add to PATH)
 #
 # Android prerequisites (-Android):
 #   1. Rust (rustup) — https://rustup.rs
@@ -210,7 +210,7 @@ if ($installed -notmatch [regex]::Escape($Target)) {
 # ── Build ───────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "==> [$( (Get-Date).ToString('HH:mm:ss') )] Building godot-mdns (target: $Target, profile: $Profile) ..."
-if ($Release) { Write-Host "    (release build — LTO link step can take 3-5 min on first run)" }
+if ($Release) { Write-Host "    (release build - LTO link step can take 3-5 min on first run)" }
 $StartTime = Get-Date
 Push-Location $ScriptDir
 try {
