@@ -6,10 +6,50 @@
 //!
 //! Both nodes are self-contained: add them as children, connect signals, call the exposed
 //! functions, and remove/free them to stop mDNS activity automatically.
+//!
+//! ## IMPORTANT: shared daemon design
+//!
+//! `ServiceDaemon::new()` binds a UDP socket on port 5353 and starts a background thread.
+//! Creating two daemons in the same process means two sockets compete for the same multicast
+//! port.  On macOS SO_REUSEPORT distributes packets between them non-deterministically; on
+//! Windows the second bind often silently fails.  The result is that discovery announcements
+//! from a remote host land on whichever local daemon happens to receive them, and the *other*
+//! daemon (browse or advertise) never sees them — producing intermittent or one-way discovery.
+//!
+//! The fix: use a single process-global `ServiceDaemon` (stored in `SHARED_DAEMON`) that both
+//! `MdnsBrowser` and `MdnsAdvertiser` clone handles from.  `ServiceDaemon` is internally
+//! `Arc`-backed so `.clone()` is cheap and all clones share the same background thread and
+//! socket.  Only the Android `iface_ip` path creates a dedicated second daemon because that
+//! path calls `disable_interface(All)` + `enable_interface(specific)` which would break any
+//! co-running advertiser — and Android devices never run `MdnsAdvertiser`.
 
 use godot::prelude::*;
 use mdns_sd::{IfKind, ServiceDaemon, ServiceEvent, ServiceInfo};
 use std::net::IpAddr;
+use std::sync::{Mutex, OnceLock};
+
+// ---------------------------------------------------------------------------
+// Shared daemon
+// ---------------------------------------------------------------------------
+
+/// Process-global mDNS daemon shared by both `MdnsBrowser` and `MdnsAdvertiser`.
+/// Lazily initialised on first call to `shared_daemon()`.
+static SHARED_DAEMON: OnceLock<Mutex<Option<ServiceDaemon>>> = OnceLock::new();
+
+/// Returns a clone of the shared `ServiceDaemon`, creating it on first call.
+///
+/// Returns `Err` with a description string if the daemon could not be created.
+fn shared_daemon() -> Result<ServiceDaemon, String> {
+    let mutex = SHARED_DAEMON.get_or_init(|| Mutex::new(None));
+    let mut guard = mutex.lock().map_err(|e| format!("shared daemon mutex poisoned: {e}"))?;
+    if guard.is_none() {
+        *guard = Some(
+            ServiceDaemon::new()
+                .map_err(|e| format!("Failed to create shared mDNS daemon: {e}"))?,
+        );
+    }
+    Ok(guard.as_ref().unwrap().clone())
+}
 
 // ---------------------------------------------------------------------------
 // Extension entry-point
@@ -44,6 +84,9 @@ unsafe impl ExtensionLibrary for GodotMdnsExtension {}
 #[derive(GodotClass)]
 #[class(base = Node)]
 pub struct MdnsBrowser {
+    /// Clone of the shared daemon (or a private daemon when `iface_ip` is set).
+    /// Holding a clone keeps the reference alive; dropping it without calling
+    /// `shutdown()` is safe — the daemon only stops when every clone is dropped.
     daemon: Option<ServiceDaemon>,
     receiver: Option<mdns_sd::Receiver<ServiceEvent>>,
     /// Optional IP address string to restrict the daemon to a single network
@@ -51,6 +94,11 @@ pub struct MdnsBrowser {
     /// interface IP must be supplied explicitly because the driver will not
     /// deliver multicast packets to sockets joined on the wrong interface even
     /// after a MulticastLock is acquired.
+    ///
+    /// When set, a *private* daemon is created for this browser instead of
+    /// the shared one, because `disable_interface(All)` would affect any
+    /// co-running `MdnsAdvertiser`.  Android devices never run
+    /// `MdnsAdvertiser` so this is safe in practice.
     iface_ip: Option<String>,
     base: Base<Node>,
 }
@@ -121,6 +169,9 @@ impl MdnsBrowser {
     /// WiFi driver even when a MulticastLock is held.  Restricting to the
     /// correct WiFi IP ensures the daemon's socket joins the 224.0.0.251
     /// multicast group on exactly that interface.
+    ///
+    /// When an interface IP is set, this browser creates its own private daemon
+    /// rather than using the shared one.
     #[func]
     fn set_interface(&mut self, iface_ip: GString) {
         let s = iface_ip.to_string();
@@ -136,39 +187,49 @@ impl MdnsBrowser {
         // Clean up any existing browse session.
         self.stop_browsing();
 
-        let daemon = match ServiceDaemon::new() {
-            Ok(d) => d,
-            Err(e) => {
-                self.emit_browse_error(format!("Failed to create mDNS daemon: {e}"));
-                return;
-            }
-        };
-
-        // If a specific interface IP was requested (e.g. the Android WiFi IP),
-        // disable *all* interfaces on the daemon first and then re-enable only
-        // the requested one.  This ensures the multicast socket is joined on
-        // the right interface and the OS routes both queries and responses
-        // through it.
-        if let Some(ref ip_str) = self.iface_ip.clone() {
+        // Obtain a daemon handle.  If an interface IP is pinned (Android path),
+        // create a private daemon so we can restrict its interface without
+        // affecting the shared daemon that MdnsAdvertiser may be using.
+        // For all other platforms, clone the shared daemon to avoid dual-socket conflicts.
+        let daemon = if let Some(ref ip_str) = self.iface_ip.clone() {
             match ip_str.parse::<IpAddr>() {
                 Ok(ip) => {
-                    if let Err(e) = daemon.disable_interface(IfKind::All) {
-                        self.emit_browse_error(format!("disable_interface(All) failed: {e}"));
-                    }
-                    if let Err(e) = daemon.enable_interface(IfKind::Addr(ip)) {
-                        self.emit_browse_error(format!("enable_interface({ip}) failed: {e}"));
+                    match ServiceDaemon::new() {
+                        Ok(d) => {
+                            if let Err(e) = d.disable_interface(IfKind::All) {
+                                self.emit_browse_error(format!("disable_interface(All) failed: {e}"));
+                            }
+                            if let Err(e) = d.enable_interface(IfKind::Addr(ip)) {
+                                self.emit_browse_error(format!("enable_interface({ip}) failed: {e}"));
+                            }
+                            d
+                        }
+                        Err(e) => {
+                            self.emit_browse_error(format!("Failed to create mDNS daemon: {e}"));
+                            return;
+                        }
                     }
                 }
                 Err(_) => {
                     self.emit_browse_error(format!("set_interface: invalid IP '{}'", ip_str));
+                    return;
                 }
             }
-        }
+        } else {
+            match shared_daemon() {
+                Ok(d) => d,
+                Err(e) => {
+                    self.emit_browse_error(e);
+                    return;
+                }
+            }
+        };
 
         let receiver = match daemon.browse(service_type.to_string().as_str()) {
             Ok(r) => r,
             Err(e) => {
                 self.emit_browse_error(format!("Failed to start mDNS browse: {e}"));
+                // Drop private daemon if it was created (shared one lives on).
                 return;
             }
         };
@@ -177,14 +238,19 @@ impl MdnsBrowser {
         self.receiver = Some(receiver);
     }
 
-    /// Stop the active browse and release the mDNS daemon.
+    /// Stop the active browse and release this node's daemon handle.
+    ///
+    /// For the shared daemon, dropping the clone does not shut down the background
+    /// thread — other users (e.g. `MdnsAdvertiser`) keep their own clones alive.
+    /// For the private Android daemon, dropping it here shuts it down because this
+    /// was the only clone.
     #[func]
     fn stop_browsing(&mut self) {
-        // Drop receiver first so the daemon channel flushes cleanly.
+        // Drop receiver first so the browse channel flushes cleanly.
         self.receiver = None;
-        if let Some(daemon) = self.daemon.take() {
-            let _ = daemon.shutdown();
-        }
+        // Drop daemon clone — does not shutdown shared daemon; only shuts down
+        // the private Android daemon (which has no other live clones).
+        self.daemon = None;
     }
 
     /// Returns `true` if a browse is currently active.
@@ -292,6 +358,8 @@ impl MdnsBrowser {
 #[derive(GodotClass)]
 #[class(base = Node)]
 pub struct MdnsAdvertiser {
+    /// Clone of the shared daemon.  Kept alive so the service stays registered.
+    /// Dropped (without `shutdown()`) in `stop_advertising()`.
     daemon: Option<ServiceDaemon>,
     fullname: Option<String>,
     base: Base<Node>,
@@ -346,10 +414,10 @@ impl MdnsAdvertiser {
     ) -> bool {
         self.stop_advertising();
 
-        let daemon = match ServiceDaemon::new() {
+        let daemon = match shared_daemon() {
             Ok(d) => d,
             Err(e) => {
-                self.emit_adv_error(format!("Failed to create mDNS daemon: {e}"));
+                self.emit_adv_error(e);
                 return false;
             }
         };
@@ -403,7 +471,11 @@ impl MdnsAdvertiser {
         true
     }
 
-    /// Unregister the advertised service and shut down the daemon.
+    /// Unregister the advertised service and release this node's daemon handle.
+    ///
+    /// The shared daemon itself stays alive as long as any other clone exists
+    /// (e.g. a running `MdnsBrowser`).  Dropping the clone here does not shut
+    /// down the background thread.
     ///
     /// Called automatically from `exit_tree`; safe to call manually at any time.
     #[func]
@@ -412,9 +484,8 @@ impl MdnsAdvertiser {
             let _ = daemon.unregister(name);
         }
         self.fullname = None;
-        if let Some(daemon) = self.daemon.take() {
-            let _ = daemon.shutdown();
-        }
+        // Drop clone — does not shutdown shared daemon.
+        self.daemon = None;
     }
 
     /// Returns `true` if the service is currently being advertised.
