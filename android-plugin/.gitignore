@@ -1,6 +1,0 @@
-# Downloaded by CI (or locally) — not committed.
-# See CI workflow or build.gradle comments for download instructions.
-libs/
-build/
-.gradle/
-local.properties

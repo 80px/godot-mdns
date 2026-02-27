@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - "src/**"
-      - "android-plugin/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/build.yml"
@@ -167,47 +166,3 @@ jobs:
 
       - name: Build x86_64 (debug)
         run: cargo ndk -t x86_64 --platform 21 -- build
-
-  # ── Android MulticastLock Java plugin ────────────────────────────────
-  build-android-plugin:
-    name: Android MulticastLock plugin
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Cache Godot Android library
-        id: cache-godot-aar
-        uses: actions/cache@v4
-        with:
-          path: android-plugin/libs/godot-lib.aar
-          key: godot-lib-4.6-stable-aar
-
-      - name: Download Godot Android library
-        if: steps.cache-godot-aar.outputs.cache-hit != 'true'
-        working-directory: android-plugin
-        run: |
-          mkdir -p libs
-          curl -L -o libs/godot-lib.aar \
-            "https://github.com/godotengine/godot/releases/download/4.6-stable/godot-lib.4.6.stable.template_release.aar"
-
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Build plugin
-        working-directory: android-plugin
-        run: gradle assembleRelease
-
-      - name: Stage
-        run: |
-          mkdir -p staged-plugin
-          cp android-plugin/build/outputs/aar/MulticastLockPlugin-release.aar \
-             staged-plugin/MulticastLockPlugin.aar
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: godot-mdns-android-plugin
-          path: staged-plugin/

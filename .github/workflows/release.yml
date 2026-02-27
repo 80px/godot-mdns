@@ -165,43 +165,6 @@ jobs:
           name: release-android
           path: staged/
 
-  # ── Android MulticastLock Java plugin ───────────────────────────────────────
-  build-android-plugin:
-    name: Android MulticastLock plugin
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-      - name: Cache Godot Android library
-        id: cache-godot-aar
-        uses: actions/cache@v4
-        with:
-          path: android-plugin/libs/godot-lib.aar
-          key: godot-lib-4.6-stable-aar
-      - name: Download Godot Android library
-        if: steps.cache-godot-aar.outputs.cache-hit != 'true'
-        working-directory: android-plugin
-        run: |
-          mkdir -p libs
-          curl -L -o libs/godot-lib.aar \
-            "https://github.com/godotengine/godot/releases/download/4.6-stable/godot-lib.4.6.stable.template_release.aar"
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Build plugin
-        working-directory: android-plugin
-        run: gradle assembleRelease
-      - name: Stage
-        run: |
-          mkdir -p staged-plugin
-          cp android-plugin/build/outputs/aar/MulticastLockPlugin-release.aar \
-             staged-plugin/MulticastLockPlugin.aar
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-android-plugin
-          path: staged-plugin/
-
   # ── Assemble addon zip and create GitHub Release ────────────────────────────
   package-and-release:
     name: Package & publish GitHub Release
@@ -212,7 +175,6 @@ jobs:
       - build-windows-x86_64
       - build-ios
       - build-android
-      - build-android-plugin
     runs-on: ubuntu-latest
     permissions:
       contents: write   # needed to create a GitHub Release
@@ -234,16 +196,13 @@ jobs:
       #     bin/windows/x86_64/release/
       #     bin/ios/arm64/release/
       #     bin/android/arm64/release/  bin/android/arm32/release/
-      #     android/MulticastLockPlugin.gdap + MulticastLockPlugin.aar
       - name: Assemble addon directory
         run: |
           mkdir -p addon/addons/godot-mdns/bin
-          mkdir -p addon/addons/godot-mdns/android
 
           # Metadata files from the repo
           cp addons/godot-mdns/godot-mdns.gdextension addon/addons/godot-mdns/
           cp addons/godot-mdns/plugin.cfg             addon/addons/godot-mdns/
-          cp addons/godot-mdns/android/MulticastLockPlugin.gdap addon/addons/godot-mdns/android/
 
           # Binaries from CI build steps
           cp -r all-bins/linux   addon/addons/godot-mdns/bin/
@@ -251,9 +210,6 @@ jobs:
           cp -r all-bins/windows addon/addons/godot-mdns/bin/
           cp -r all-bins/ios     addon/addons/godot-mdns/bin/
           cp -r all-bins/android addon/addons/godot-mdns/bin/
-
-          # Android Java plugin .aar
-          cp all-bins/MulticastLockPlugin.aar addon/addons/godot-mdns/android/
 
           # Mirror each release/ binary into a debug/ sibling so the addon works
           # when the Godot editor loads it (editor always requests the debug variant).
@@ -285,13 +241,17 @@ jobs:
 
             ## Platform-specific setup
 
-            **Android** — two extra steps required:
-            - Enable **MulticastLock** in *Project → Export → Android → Plugins*.
+            **Android** — two steps required:
             - Check **CHANGE_WIFI_MULTICAST_STATE** in *Project → Export → Android → Permissions*.
-            - Before calling `browse()`, run this GDScript:
+            - Acquire the MulticastLock in GDScript **before** calling `browse()` (Godot 4.2+, no plugin needed):
               ```gdscript
               if OS.get_name() == "Android":
-                  Engine.get_singleton("MulticastLock").acquire_multicast_lock()
+                  var rt := Engine.get_singleton("AndroidRuntime")
+                  if rt:
+                      var lock = rt.getApplicationContext().getSystemService("wifi") \
+                                   .createMulticastLock("godot-mdns")
+                      lock.setReferenceCounted(true)
+                      lock.acquire()
               ```
 
             **iOS** — two export settings required:

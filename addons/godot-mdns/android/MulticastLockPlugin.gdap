@@ -1,8 +1,0 @@
-[config]
-name="MulticastLock"
-binary="MulticastLockPlugin.aar"
-
-[dependencies]
-local=[]
-remote=[]
-custom_maven_repos=[]
