@@ -1,5 +1,22 @@
 # MulticastLock — Godot Android Plugin
 
+> **Deprecated — Godot 4.2+ users do not need this plugin.**
+>
+> Godot 4.2 introduced the `AndroidRuntime` singleton which gives GDScript direct JNI
+> access to the full Android SDK. The MulticastLock can now be acquired entirely in
+> GDScript without any extra `.aar`:
+>
+> ```gdscript
+> var rt := Engine.get_singleton("AndroidRuntime")
+> if rt:
+>     var lock = rt.getApplicationContext().getSystemService("wifi") \
+>                  .createMulticastLock("godot-mdns")
+>     lock.setReferenceCounted(true)
+>     lock.acquire()
+> ```
+>
+> This plugin is kept here only for projects still on **Godot 4.1**.
+
 A minimal Godot 4 Android plugin that acquires and releases a `WifiManager.MulticastLock`.
 
 ## Why this exists

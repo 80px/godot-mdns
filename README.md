@@ -15,7 +15,7 @@ Uses [`mdns-sd`](https://crates.io/crates/mdns-sd) — a pure-Rust, zero-OS-depe
 | macOS | ✅ | Universal binary (x86_64 + arm64) |
 | Windows x86_64 | ✅ | |
 | iOS arm64 | ✅ | Requires Apple multicast entitlement — see [iOS setup](#ios) |
-| Android arm64 / arm32 / x86_64 | ✅ | Requires MulticastLock Java plugin — see [Android setup](#android) |
+| Android arm64 / arm32 / x86_64 | ✅ | Requires `CHANGE_WIFI_MULTICAST_STATE` permission — see [Android setup](#android) |
 | HTML5 / Web | ❌ | Browser sandbox has no UDP multicast API |
 
 ---
@@ -37,9 +37,15 @@ Both nodes are self-contained: add them as children, connect signals, and free t
 
 ```gdscript
 func _ready() -> void:
-    # Acquire the multicast lock on Android BEFORE browsing (no-op on other platforms)
+    # Android: acquire a WifiManager.MulticastLock via Godot's built-in AndroidRuntime
+    # singleton (available in all Godot 4.2+ Android templates — no extra plugin needed).
     if OS.get_name() == "Android":
-        Engine.get_singleton("MulticastLock").acquire_multicast_lock()
+        var rt := Engine.get_singleton("AndroidRuntime")
+        if rt:
+            var lock = rt.getApplicationContext().getSystemService("wifi") \
+                         .createMulticastLock("godot-mdns")
+            lock.setReferenceCounted(true)
+            lock.acquire()
 
     var browser := MdnsBrowser.new()
     add_child(browser)
@@ -186,14 +192,6 @@ $env:ANDROID_NDK_HOME = "C:\path\to\your\ndk"
 
 Output: `addons/godot-mdns/bin/android/arm64/<profile>/libgodot_mdns.so`, `arm32/`, and `x86_64/`
 
-Also build the MulticastLock Java plugin (one-time, required for Android):
-```bash
-cd android-plugin
-# Download godot-lib.aar first — see android-plugin/README.md
-gradle assembleRelease
-cp build/outputs/aar/MulticastLockPlugin-release.aar ../addons/godot-mdns/android/MulticastLockPlugin.aar
-```
-
 ### CI
 
 Two GitHub Actions workflows run automatically:
@@ -251,24 +249,31 @@ git push origin v0.2.0    # push the tag explicitly — this triggers the workfl
 
 ### Android
 
-#### Why a Java plugin is needed
+#### Why a MulticastLock is needed
 
-Android silently drops all inbound multicast UDP packets at the WiFi driver level by default. Because mDNS uses multicast UDP on port 5353, `MdnsBrowser` will never receive any responses on Android without intervention — the datagrams are discarded before the Rust code ever sees them.
+Android silently drops all inbound multicast UDP packets at the WiFi driver level by default. Because mDNS uses multicast UDP on port 5353, `MdnsBrowser` will never receive any responses without intervention — datagrams are discarded before the Rust code ever sees them.
 
-The fix is a `WifiManager.MulticastLock`. While the lock is held, Android instructs the WiFi hardware to pass multicast packets up the network stack to the application. The critical constraint is that this lock **can only be acquired through the Android Java API** — there is no NDK (C/C++ or Rust) equivalent. Native code alone cannot enable multicast reception.
+The fix is a `WifiManager.MulticastLock`. While the lock is held, the WiFi hardware passes multicast packets up the network stack to the application.
 
-#### What the bundled plugin does
+#### Acquiring the lock — no plugin required (Godot 4.2+)
 
-The `android-plugin/` directory contains a minimal Godot 4 Android plugin written in Java (`MulticastLockPlugin.java`). It extends `GodotPlugin`, which lets Godot load it as a singleton at runtime. The plugin:
+Godot 4.2's Android template exposes an `AndroidRuntime` singleton that gives GDScript direct JNI access to the full Android SDK. Use it to acquire the lock in pure GDScript — **no extra `.aar` plugin needed**:
 
-1. Registers itself under the name `"MulticastLock"` (via `getPluginName()`).
-2. Exposes three methods annotated with `@UsedByGodot` so GDScript can call them:
-   - `acquire_multicast_lock()` — obtains a `WifiManager.MulticastLock` tagged `"godot-mdns"` with reference counting enabled and calls `acquire()` on it.
-   - `release_multicast_lock()` — calls `release()` and nulls the reference.
-   - `is_multicast_lock_held() -> bool` — returns the current lock state.
-3. Overrides `onMainDestroy()` to always release the lock when the app is destroyed, preventing a system-level lock leak.
+```gdscript
+if OS.get_name() == "Android":
+    var rt := Engine.get_singleton("AndroidRuntime")
+    if rt:
+        var wifi = rt.getApplicationContext().getSystemService("wifi")
+        var lock = wifi.createMulticastLock("godot-mdns")
+        lock.setReferenceCounted(true)
+        lock.acquire()
+        # Optional: release when mDNS is no longer needed
+        # lock.release()
+```
 
-The plugin is packaged as an Android Archive (`.aar`) and declared to Godot via `addons/godot-mdns/android/MulticastLockPlugin.gdap`, which maps the plugin name `"MulticastLock"` to `MulticastLockPlugin.aar`.
+Call this **before** `MdnsBrowser.browse()`.
+
+> **Godot 4.1 note:** `AndroidRuntime` is not available in Godot 4.1. The legacy `android-plugin/` directory in this repo contains a Java `GodotPlugin` that exposes a `MulticastLock` singleton if you are still on 4.1. Godot 4.2+ users should ignore it.
 
 #### Build pipeline summary
 
@@ -278,43 +283,17 @@ build.sh --android  (or build.ps1 -Android)
   └─ cargo ndk -t armeabi-v7a → target/armv7-linux-androideabi/<profile>/libgodot_mdns.so
   └─ cargo ndk -t x86_64      → target/x86_64-linux-android/<profile>/libgodot_mdns.so
 
-android-plugin/ (one-time)
-  └─ gradle assembleRelease   → MulticastLockPlugin-release.aar
-                              → copied to addons/godot-mdns/android/MulticastLockPlugin.aar
-
 Godot Android export
   ├─ loads libgodot_mdns.so  (GDExtension — provides MdnsBrowser / MdnsAdvertiser nodes)
-  ├─ loads MulticastLockPlugin.aar  (GodotPlugin — provides the MulticastLock singleton)
   └─ merges CHANGE_WIFI_MULTICAST_STATE permission into the final APK/AAB manifest
 ```
-
-`cargo ndk` wraps the Android NDK cross-compiler so that ordinary `cargo build` invocations target the correct Android ABI and NDK sysroot. The resulting `.so` files are standard GDExtension shared libraries — Godot loads them automatically based on the `[libraries]` entries in `godot-mdns.gdextension`.
 
 #### Export settings
 
 **In the Godot Export dialog → Android:**
 
-1. **Plugins tab** — enable `MulticastLock`
-2. **Permissions tab** — check `CHANGE_WIFI_MULTICAST_STATE`
-3. Ensure `addons/godot-mdns/android/MulticastLockPlugin.aar` is present (built from `android-plugin/` or downloaded from a release)
-
-#### GDScript usage
-
-Acquire the lock **before** calling `MdnsBrowser.browse()`:
-
-```gdscript
-if OS.get_name() == "Android":
-    Engine.get_singleton("MulticastLock").acquire_multicast_lock()
-```
-
-Release it when mDNS is no longer needed to conserve battery:
-
-```gdscript
-if OS.get_name() == "Android":
-    Engine.get_singleton("MulticastLock").release_multicast_lock()
-```
-
-The lock is also automatically released in `onMainDestroy()` as a safety net, but explicit release is preferred.
+1. **Permissions tab** — check `CHANGE_WIFI_MULTICAST_STATE`
+2. No plugin needs to be enabled in the Plugins tab.
 
 ### iOS
 

@@ -12,14 +12,18 @@
 ; Run  ./build.sh --ios      to compile the iOS static lib (macOS host required).
 ; For all platforms at once, push a version tag — the CI release workflow handles everything.
 ;
-; NOTE — Android: the mDNS .so is only half the story on Android.
-;   The OS silently drops multicast UDP unless a MulticastLock is held.
-;   Enable the bundled MulticastLock plugin (addons/godot-mdns/android/) in your
-;   Android Export settings and call it before starting MdnsBrowser:
-;     Engine.get_singleton("MulticastLock").acquire_multicast_lock()
+; NOTE — Android: the OS silently drops multicast UDP unless a MulticastLock is held.
+;   Acquire it in GDScript via the AndroidRuntime singleton (Godot 4.2+, no plugin needed):
+;     var rt := Engine.get_singleton("AndroidRuntime")
+;     if rt:
+;         var lock = rt.getApplicationContext().getSystemService("wifi") \
+;                      .createMulticastLock("godot-mdns")
+;         lock.setReferenceCounted(true)
+;         lock.acquire()
+;   Also add the CHANGE_WIFI_MULTICAST_STATE permission in your Android Export settings.
 ;
 ; NOTE — iOS: the com.apple.developer.networking.multicast entitlement is required.
-;   Add it in Project > Export > iOS > Custom Entitlements.
+;   Add it in Project > Export > iOS > Custom Entitlements. See README.md for more information.
 ; ---------------------------------------------------------------------------
 
 [configuration]
@@ -46,7 +50,7 @@ windows.release.x86_64 = "res://addons/godot-mdns/bin/windows/x86_64/release/god
 ios.debug   = "res://addons/godot-mdns/bin/ios/arm64/debug/libgodot_mdns.a"
 ios.release = "res://addons/godot-mdns/bin/ios/arm64/release/libgodot_mdns.a"
 
-; ── Android (.so loaded at runtime; MulticastLock plugin also required) ──────
+; ── Android (.so loaded at runtime; CHANGE_WIFI_MULTICAST_STATE permission required) ──────
 android.debug.arm64   = "res://addons/godot-mdns/bin/android/arm64/debug/libgodot_mdns.so"
 android.release.arm64 = "res://addons/godot-mdns/bin/android/arm64/release/libgodot_mdns.so"
 android.debug.arm32   = "res://addons/godot-mdns/bin/android/arm32/debug/libgodot_mdns.so"
