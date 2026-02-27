@@ -24,7 +24,7 @@
 //! co-running advertiser — and Android devices never run `MdnsAdvertiser`.
 
 use godot::prelude::*;
-use mdns_sd::{IfKind, ServiceDaemon, ServiceEvent, ServiceInfo};
+use mdns_sd::{IfKind, ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo};
 use std::net::IpAddr;
 use std::sync::{Mutex, OnceLock};
 
@@ -89,6 +89,10 @@ pub struct MdnsBrowser {
     /// `shutdown()` is safe — the daemon only stops when every clone is dropped.
     daemon: Option<ServiceDaemon>,
     receiver: Option<mdns_sd::Receiver<ServiceEvent>>,
+    /// The service type currently being browsed (e.g. `"_mygame._tcp.local."`).
+    /// Stored so `stop_browsing()` can call `daemon.stop_browse()` to clean up
+    /// the browse subscription in the shared daemon.
+    service_type: Option<String>,
     /// Optional IP address string to restrict the daemon to a single network
     /// interface.  Set this before calling `browse()`.  On Android the WiFi
     /// interface IP must be supplied explicitly because the driver will not
@@ -109,6 +113,7 @@ impl INode for MdnsBrowser {
         Self {
             daemon: None,
             receiver: None,
+            service_type: None,
             iface_ip: None,
             base,
         }
@@ -136,14 +141,14 @@ impl MdnsBrowser {
     ///   host      — hostname, e.g. "marks-pc.local."
     ///   addresses — array of IP address strings (IPv4 and/or IPv6)
     ///   port      — TCP/UDP port as int
-    ///   txt       — Dictionary of TXT record key→value strings
+    ///   txt       — VarDictionary of TXT record key→value strings
     #[signal]
     fn service_discovered(
         name: GString,
         host: GString,
         addresses: PackedStringArray,
         port: i64,
-        txt: Dictionary,
+        txt: VarDictionary,
     );
 
     /// Emitted when a previously discovered service disappears from the LAN.
@@ -234,6 +239,7 @@ impl MdnsBrowser {
             }
         };
 
+        self.service_type = Some(service_type.to_string());
         self.daemon = Some(daemon);
         self.receiver = Some(receiver);
     }
@@ -246,8 +252,14 @@ impl MdnsBrowser {
     /// was the only clone.
     #[func]
     fn stop_browsing(&mut self) {
+        // Tell the daemon to stop the browse subscription so it no longer sends
+        // multicast queries or queues events for this service type.
+        if let (Some(daemon), Some(svc_type)) = (&self.daemon, &self.service_type) {
+            let _ = daemon.stop_browse(svc_type);
+        }
         // Drop receiver first so the browse channel flushes cleanly.
         self.receiver = None;
+        self.service_type = None;
         // Drop daemon clone — does not shutdown shared daemon; only shuts down
         // the private Android daemon (which has no other live clones).
         self.daemon = None;
@@ -283,7 +295,7 @@ impl MdnsBrowser {
             ServiceEvent::ServiceRemoved(_, fullname) => {
                 self.base_mut().emit_signal(
                     "service_removed",
-                    &[GString::from(fullname).to_variant()],
+                    &[GString::from(&fullname).to_variant()],
                 );
             }
             // SearchStarted / SearchStopped / ServiceFound are informational; ignored here.
@@ -291,7 +303,7 @@ impl MdnsBrowser {
         }
     }
 
-    fn on_service_resolved(&mut self, info: ServiceInfo) {
+    fn on_service_resolved(&mut self, info: Box<ResolvedService>) {
         let name = GString::from(info.get_fullname());
         let host = GString::from(info.get_hostname());
         let port = info.get_port() as i64;
@@ -300,7 +312,8 @@ impl MdnsBrowser {
         // `get_addresses()` iterates a HashSet whose order is non-deterministic;
         // without this sort `addresses[0]` can be an IPv6 link-local address
         // (fe80::…) that Godot/Nakama cannot use as a plain host string.
-        let mut sorted_addrs: Vec<IpAddr> = info.get_addresses().iter().copied().collect();
+        // mdns-sd 0.18+ returns ScopedIp; convert to plain IpAddr for Godot strings.
+        let mut sorted_addrs: Vec<IpAddr> = info.get_addresses().iter().map(|a| a.to_ip_addr()).collect();
         sorted_addrs.sort_by_key(|a| if a.is_ipv4() { 0u8 } else { 1u8 });
 
         let mut addresses = PackedStringArray::new();
@@ -308,7 +321,7 @@ impl MdnsBrowser {
             addresses.push(addr.to_string().as_str());
         }
 
-        let mut txt = Dictionary::new();
+        let mut txt = VarDictionary::new();
         for prop in info.get_properties().iter() {
             txt.set(
                 GString::from(prop.key()),
@@ -330,7 +343,7 @@ impl MdnsBrowser {
 
     fn emit_browse_error(&mut self, msg: String) {
         self.base_mut()
-            .emit_signal("browse_error", &[GString::from(msg).to_variant()]);
+            .emit_signal("browse_error", &[GString::from(msg.as_str()).to_variant()]);
     }
 }
 
@@ -410,7 +423,7 @@ impl MdnsAdvertiser {
         instance_name: GString,
         service_type: GString,
         port: i64,
-        txt_records: Dictionary,
+        txt_records: VarDictionary,
     ) -> bool {
         self.stop_advertising();
 
@@ -504,7 +517,7 @@ impl MdnsAdvertiser {
 
     fn emit_adv_error(&mut self, msg: String) {
         self.base_mut()
-            .emit_signal("advertise_error", &[GString::from(msg).to_variant()]);
+            .emit_signal("advertise_error", &[GString::from(msg.as_str()).to_variant()]);
     }
 }
 

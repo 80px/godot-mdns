@@ -16,12 +16,18 @@ crate-type = ["cdylib", "staticlib"]
 # ── Runtime dependencies ───────────────────────────────────────────────────────
 [dependencies]
 # Godot 4 GDExtension binding for Rust
-godot = "0.2"
+godot = "0.4.5"
 
 # Pure-Rust mDNS — supports both browsing AND advertising (no OS daemon needed)
-mdns-sd = "0.13"
+mdns-sd = "0.18"
 
 # Cross-platform hostname retrieval for service advertisement
+hostname = "0.4"
+
+# ── Dev/test dependencies (integration tests use mdns-sd directly
+#    because the cdylib crate cannot be linked by test harnesses) ─────────────
+[dev-dependencies]
+mdns-sd  = "0.18"
 hostname = "0.4"
 
 # ── Release profile ─────────────────────────────────────────────────────────
