@@ -57,3 +57,6 @@ android.debug.arm32   = "res://addons/godot-mdns/bin/android/arm32/debug/libgodo
 android.release.arm32 = "res://addons/godot-mdns/bin/android/arm32/release/libgodot_mdns.so"
 android.debug.x86_64  = "res://addons/godot-mdns/bin/android/x86_64/debug/libgodot_mdns.so"
 android.release.x86_64 = "res://addons/godot-mdns/bin/android/x86_64/release/libgodot_mdns.so"
+
+; NOTE — Web/HTML5 is not supported (browser sandbox has no multicast UDP API).
+; The .gdextension file is excluded from Web exports via exclude_filter in export_presets.cfg.
