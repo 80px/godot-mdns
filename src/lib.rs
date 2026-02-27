@@ -230,8 +230,15 @@ impl MdnsBrowser {
         let host = GString::from(info.get_hostname());
         let port = info.get_port() as i64;
 
+        // Collect into a Vec and sort so IPv4 addresses always come before IPv6.
+        // `get_addresses()` iterates a HashSet whose order is non-deterministic;
+        // without this sort `addresses[0]` can be an IPv6 link-local address
+        // (fe80::…) that Godot/Nakama cannot use as a plain host string.
+        let mut sorted_addrs: Vec<IpAddr> = info.get_addresses().iter().copied().collect();
+        sorted_addrs.sort_by_key(|a| if a.is_ipv4() { 0u8 } else { 1u8 });
+
         let mut addresses = PackedStringArray::new();
-        for addr in info.get_addresses() {
+        for addr in &sorted_addrs {
             addresses.push(addr.to_string().as_str());
         }
 
